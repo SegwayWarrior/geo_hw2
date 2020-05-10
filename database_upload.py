@@ -33,10 +33,10 @@ class databaseReader:
     linkPVID = linkrecord
     print('linkPVID')
     print(linkPVID)
-    # if(linkrecord):
-    #   slope_string = str(linkrecord) + ',' + str(newslope)
-    # else:
-    #   slope_string = str(newslope)
+    if(linkrecord):
+      slope_string = str(linkrecord) + ',' + str(newslope)
+    else:
+      slope_string = str(newslope)
     slope_string = str(newslope)
     query = " UPDATE link_data SET slope = '%s' WHERE linkPVID=%d;"%(slope_string, int(linkPVID))
 
@@ -54,19 +54,13 @@ def map_match(links, probe):
     probe_lat = probe[2]
     probe_lon = probe[3]
     probe_utm_e, probe_utm_n,_,_= utm.from_latlon(float(probe_lat), float(probe_lon))
-
     closest_link = 0;
+    closest_sub_link = 0;
     for link in links:
-        print('link^^^^')
-        print(link[14])
         node_list = []
         node_list.append(link[14].split('|'))
         node_list = node_list[0]
-        print('node_list %%%%')
-        print(node_list)
         for node in node_list:
-            print('node!!!!!!')
-            print(node)
             node_info = []
             node_info = node.split('/')
             # convert link nodes to cartesian cord
@@ -76,8 +70,21 @@ def map_match(links, probe):
                 closest_link = int(link[0])
                 closest_node_dist_sqr = (utm_e - probe_utm_e)**2 + (utm_n - probe_utm_n)**2
 
+                # find sub_link
+                if node == node_list[0]:
+                    closest_sub_link = 0
+                else:
+                    node_zero_info = []
+                    node_zero_info = node_list[0].split('/')
+                    zero_utm_e, zero_utm_n,_,_ = utm.from_latlon(float(node_zero_info[0]), float(node_zero_info[1]))
+                    # compare distance of node to refNode and probe to refNode
+                    if (utm_e - zero_utm_e)**2 + (utm_n - zero_utm_n)**2 < (probe_utm_e- zero_utm_e)**2 + (probe_utm_n- zero_utm_n)**2 :
+                        closest_sub_link = node_list.index(node)
+                    else:
+                        closest_sub_link = node_list.index(node) - 1
 
-    return closest_link
+
+    return closest_link, closest_sub_link
 
 def calculate_slope(probe_data, prev_probe_data):
     # calculate the slope of the point with probe data
@@ -102,6 +109,58 @@ def calculate_slope(probe_data, prev_probe_data):
     print(slope)
 
     return slope
+
+def calculate_link_slope(links):
+    all_link_slope_info = []
+    for link in links:
+        node_list = []
+        node_list.append(link[14].split('|'))
+        node_list = node_list[0]
+        link_slope_info = []
+        link_slope_info.append(link[0])
+        def get_link_slope():
+
+            node_count = 0
+            prev_node_info = []
+            for node in node_list:
+                node_info = []
+                node_info = node.split('/')
+                if node_info[2] == '':
+                    # No alt provided so slope is NA
+                    link_slope = str(link[0]) + ', NA'
+                    all_link_slope_info.append(link_slope)
+                    return
+
+                if node == node_list[0]:
+                    prev_node_info = node_info
+
+                if node != node_list[0]:
+                    node_lat = node_info[0]
+                    node_lon = node_info[1]
+                    node_alt = node_info[2]
+                    node_utm_e, node_utm_n,_,_ = utm.from_latlon(float(node_lat), float(node_lon))
+
+                    prev_node_lat = prev_node_info[0]
+                    prev_node_lon = prev_node_info[1]
+                    prev_node_alt = prev_node_info[2]
+                    prev_node_utm_e, prev_node_utm_n,_,_ = utm.from_latlon(float(prev_node_lat), float(prev_node_lon))
+
+
+                    node_x_y_dist_change = ((node_utm_e - prev_node_utm_e)**2 + (node_utm_n - prev_node_utm_n)**2)**(0.5)
+                    node_alt_change = node_alt - prev_node_alt
+                    node_slope = node_alt_change / node_x_y_dist_change
+
+                    sub_link_slope = str(node_count) + ':' + str(node_slope)
+                    link_slope_info.append(sub_link_slope)
+                    node_count += 1
+                    prev_node_info = node_info
+
+        get_link_slope()
+        all_link_slope_info.append(link_slope_info)
+
+    return all_link_slope_info
+
+
 
 def analyse_probedata(probe_csv_path, op_csv_path):
     linkdatabase = databaseReader('roadlink_4.db')
@@ -128,7 +187,7 @@ def analyse_probedata(probe_csv_path, op_csv_path):
         relevant_links = linkdatabase.filter_matching_links(latitude, longitude)
 
         # core function
-        matched_link = map_match(relevant_links, probe_data_formatted)
+        matched_link, matched_sub_link = map_match(relevant_links, probe_data_formatted)
         if previous_probe_point[0] == probe_data_formatted[0] and\
            previous_link_match == matched_link:
           slope_value = calculate_slope(probe_data_formatted, previous_probe_point)
