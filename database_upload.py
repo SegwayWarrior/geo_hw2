@@ -67,7 +67,7 @@ def map_match(links, probe):
             utm_e, utm_n,_,_ = utm.from_latlon(float(node_info[0]), float(node_info[1]))
             if (utm_e - probe_utm_e)**2 + (utm_n - probe_utm_n)**2 < closest_node_dist_sqr:
                 # save link PVID of closest link
-                closest_link = int(link[0])
+                closest_link = link
                 closest_node_dist_sqr = (utm_e - probe_utm_e)**2 + (utm_n - probe_utm_n)**2
 
                 # find sub_link
